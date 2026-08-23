@@ -1,4 +1,4 @@
-name: macOS
+name: CI / macOS
 
 # Runs the shared dictionary contract against the Swift implementation. The Windows
 # workflow runs the identical vectors against the C# one. Both must be green for the two
@@ -7,13 +7,17 @@ name: macOS
 on:
   push:
     branches: [main]
-    paths: ['Sources/**', 'Tests/**', 'shared/**', 'Package.swift', '.github/workflows/macos.yml']
+    paths: ['Sources/**', 'Tests/**', 'shared/**', 'Resources/**', 'Makefile', 'Package.swift', '.github/workflows/macos.yml', '.github/workflows/release.yml']
   pull_request:
-    paths: ['Sources/**', 'Tests/**', 'shared/**', 'Package.swift', '.github/workflows/macos.yml']
+    paths: ['Sources/**', 'Tests/**', 'shared/**', 'Resources/**', 'Makefile', 'Package.swift', '.github/workflows/macos.yml', '.github/workflows/release.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   dictionary-contract:
@@ -36,9 +40,8 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      # The app target needs macOS 26 and the Speech framework, which the runner image
-      # does not have. The dictionary target is deliberately platform-neutral, so it — and
-      # the contract that matters here — builds and tests anywhere.
+      # The dictionary target is deliberately platform-neutral, so the shared correction
+      # contract is still validated independently of the full app bundle build below.
       - name: Test the dictionary target
         run: swift test --filter VectorTests
 
@@ -50,3 +53,30 @@ jobs:
             exit 1
           fi
           echo "Vectors match."
+
+  app-build:
+    name: App build smoke
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest/Contents/Developer"
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build the release app bundle
+        run: make app CONFIG=release
+
+      - name: Upload unsigned app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Murr-flow-app-${{ github.sha }}
+          path: ~/Library/Caches/MurrFlowBuild/Murr-flow.app
+          if-no-files-found: error

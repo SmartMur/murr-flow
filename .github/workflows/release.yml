@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Build and publish DMG
@@ -34,51 +38,19 @@ jobs:
         run: swift --version
 
       # The app target needs macOS 26 and the Speech framework. If the macos-15 runner
-      # image does not yet ship the macOS 26 SDK, this step fails with a clear SDK error
-      # (missing Speech / unavailable API) — the fix is to update runs-on to a runner
-      # image that carries the macOS 26 SDK, not to change the code.
-      - name: Build release binary
-        run: swift build -c release
+      # image does not yet ship the macOS 26 SDK, `make app CONFIG=release` fails with a
+      # clear SDK error — the fix is to update runs-on to a runner image that carries the
+      # macOS 26 SDK, not to change the code.
+      - name: Build the release app bundle
+        run: make app CONFIG=release
 
-      - name: Assemble the .app bundle
+      - name: Capture release metadata
         run: |
           set -euo pipefail
 
           VERSION="${GITHUB_REF_NAME#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-
-          STAGE="$RUNNER_TEMP/MurrFlowStage"
-          BUNDLE="$STAGE/Murr-flow.app"
-          CONTENTS="$BUNDLE/Contents"
-
-          rm -rf "$STAGE"
-          mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
-
-          BIN="$(swift build -c release --show-bin-path)/MurrFlow"
-          cp "$BIN" "$CONTENTS/MacOS/MurrFlow"
-
-          cp Resources/Info.plist "$CONTENTS/Info.plist"
-          if [ -f Resources/AppIcon.icns ]; then
-            cp Resources/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
-          fi
-
-          printf 'APPL????' > "$CONTENTS/PkgInfo"
-
-          # Strip any extended attributes the SwiftPM binary picked up — codesign refuses
-          # a bundle carrying resource-fork / Finder-info detritus.
-          xattr -cr "$BUNDLE"
-
-          # Ad-hoc signature ("-"): unsigned distribution, users bypass Gatekeeper on first
-          # launch (see release notes). Hardened runtime + entitlements are still applied so
-          # the app requests microphone / accessibility correctly.
-          codesign --force --sign - \
-            --entitlements Resources/MurrFlow.entitlements \
-            --options runtime \
-            "$BUNDLE"
-
-          codesign --verify --verbose "$BUNDLE"
-
-          echo "BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+          echo "BUNDLE=$HOME/Library/Caches/MurrFlowBuild/Murr-flow.app" >> "$GITHUB_ENV"
 
       - name: Create the DMG
         run: |
