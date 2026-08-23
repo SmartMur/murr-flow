@@ -2,13 +2,12 @@ import AppKit
 import SwiftUI
 
 @main
-struct MurmurYouTubeApp: App {
+struct MurrFlowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        // The main window. A `Window` rather than a `WindowGroup`: this app has one front
-        // panel, and letting ⌘N spawn a second copy of a tape deck makes no sense.
-        Window("Murmur YouTube", id: "main") {
+        // Single main window — no WindowGroup, because ⌘N opening a second copy is wrong.
+        Window("Murr-flow", id: "main") {
             MainWindow(controller: delegate.controller)
         }
         .defaultSize(width: 860, height: 620)
@@ -22,19 +21,20 @@ struct MurmurYouTubeApp: App {
             }
         }
 
-        // Fully qualified: this app has its own `Settings` type, which otherwise shadows
-        // SwiftUI's settings scene.
+        // Fully qualified to avoid shadowing SwiftUI.Settings.
         SwiftUI.Settings {
             SettingsWindow(controller: delegate.controller)
         }
 
-        // Secondary now: status and the hotkey while you're working in another app.
+        // Menu bar entry — always present, never in the Dock while idle.
         MenuBarExtra {
             MenuContent(controller: delegate.controller)
         } label: {
-            Image(systemName: delegate.controller.state.isActive ? "waveform.circle.fill" : "waveform")
+            Image(systemName: delegate.controller.state.isActive
+                  ? "waveform.circle.fill" : "waveform")
         }
 
+        // Engine comparison tool — secondary debugging/evaluation window.
         Window("Engine comparison", id: "comparison") {
             ComparisonWindow(controller: delegate.controller)
         }
@@ -43,6 +43,8 @@ struct MurmurYouTubeApp: App {
     }
 }
 
+// MARK: - App delegate
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = DictationController()
@@ -50,28 +52,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var stateObservation: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // A regular app now: dock icon, app menu, standard windows. The HUD is still a
-        // non-activating panel, so dictating into another app never steals its focus — that
-        // property belongs to the panel, not to the activation policy.
         NSApp.setActivationPolicy(.regular)
 
         hud = HUDPanel(controller: controller)
 
         if !controller.activate() {
             Permissions.promptForAccessibility()
-            // The tap can only be created once the user grants Accessibility, and there's
-            // no notification for that — poll until it takes.
             retryActivation()
         }
 
-        // Write the dashboard up front so the menu item always opens something, even
-        // before the first dictation.
         RunLog.regenerate()
 
-        // Parakeet's models take ~20s to load from disk, and that cost lands on whichever
-        // dictation touches them first — so the first hold after every launch would stall
-        // with the HUD showing nothing. Warm them in the background instead, but only when
-        // they're actually going to be used and are already downloaded.
+        // Warm Parakeet models in the background so the first hold doesn't stall.
         let willUseParakeet = Settings.shared.compareMode || Settings.shared.engine == .parakeet
         if willUseParakeet, ParakeetModels.isDownloaded {
             Task.detached(priority: .utility) {
@@ -79,8 +71,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Every `make install` relaunches the app and drops its windows. Restoring the
-        // window when it was open last time keeps it from vanishing on each rebuild.
         if UserDefaults.standard.bool(forKey: "comparisonWindowOpen") {
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(400))
@@ -89,13 +79,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         observeState()
-        Log.app.info("Murmur YouTube ready — hold \(Settings.shared.pushToTalkKey.displayName) to dictate")
+        startTapHealthCheck()
+
+        Log.app.info("Murr-flow ready — hold \(Settings.shared.pushToTalkKey.displayName) to dictate")
     }
 
-    /// `murmuryt://clear` and `murmuryt://show`, used by the legacy HTML dashboard and
-    /// as a scriptable way to raise the window.
+    /// `murrflow://clear` and `murrflow://show` — used by the HTML dashboard and as
+    /// a scriptable way to raise the window.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "murmuryt" {
+        for url in urls where url.scheme == "murrflow" {
             switch url.host {
             case "clear":
                 RunLog.clear()
@@ -108,8 +100,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Raises the comparison window without needing SwiftUI's `openWindow` environment
-    /// value — usable from the app delegate and from a URL handler.
     static func showComparisonWindow() {
         RunStore.shared.reload()
         if let existing = NSApp.windows.first(where: { $0.title == "Engine comparison" }) {
@@ -124,7 +114,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.deactivate()
     }
 
-    /// Shows and hides the HUD in step with the controller's state.
+    // MARK: - HUD state tracking
+
     private func observeState() {
         withObservationTracking {
             _ = controller.state
@@ -141,16 +132,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Accessibility retry loop
+
     private func retryActivation() {
         Task { @MainActor in
             while !Permissions.hasAccessibility {
                 try? await Task.sleep(for: .seconds(1))
             }
-            controller.activate()
+            _ = controller.activate()
             Log.app.info("Accessibility granted — hotkey armed")
         }
     }
+
+    // MARK: - CGEvent tap health-check
+
+    /// Unsigned builds can silently lose the CGEvent tap (OS revokes it after sleep/wake
+    /// cycles or privacy-policy changes). Every 30 s — outside an active session — we
+    /// deactivate and re-arm so a stale tap is always caught before the next push-to-talk.
+    private func startTapHealthCheck() {
+        Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(30))
+                guard let self else { return }
+                // Never interrupt an active dictation.
+                guard !controller.state.isActive else { continue }
+                // Nothing to verify without Accessibility.
+                guard Permissions.hasAccessibility else { continue }
+
+                controller.deactivate()
+                if !controller.activate() {
+                    Log.app.warning("CGEvent tap health-check failed — tap could not be re-armed")
+                }
+            }
+        }
+    }
 }
+
+// MARK: - Menu bar content
 
 private struct MenuContent: View {
     @Bindable var controller: DictationController
@@ -161,7 +179,6 @@ private struct MenuContent: View {
 
     private var parakeetStatus: String {
         if isPreloadingParakeet { return "Loading Parakeet models…" }
-        // Reflects what's actually on disk, not just what this menu instance has done.
         return parakeetOnDisk ? "Parakeet models installed ✓" : "Download Parakeet models…"
     }
 
@@ -227,8 +244,6 @@ private struct MenuContent: View {
         }
         .keyboardShortcut("d")
 
-        // Downloading ~470 MB on the first hold would look like a hang, so offer to do it
-        // deliberately instead.
         if settings.engine == .parakeet {
             Button(parakeetStatus) { preloadParakeet() }
                 .disabled(isPreloadingParakeet || parakeetOnDisk)
@@ -241,7 +256,7 @@ private struct MenuContent: View {
             Button("Grant Microphone…") { Permissions.openMicrophoneSettings() }
         }
 
-        Button("Quit Murmur YouTube") { NSApp.terminate(nil) }
+        Button("Quit Murr-flow") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 }

@@ -281,6 +281,63 @@ enum DS {
     }
 }
 
+// MARK: - MF (Murr-flow / Whispr Flow visual system)
+
+/// Whispr Flow-inspired tokens for the recording pill and new UI surfaces.
+///
+/// Lives alongside `DS` — old components keep using `DS.*`, new ones use `MF.*`.
+/// No cross-references between the two namespaces.
+enum MF {
+
+    // MARK: - Pill geometry
+
+    enum Pill {
+        /// Whispr Flow pill width.
+        static let width: CGFloat = 386
+        static let height: CGFloat = 76
+        static let cornerRadius: CGFloat = 16
+        /// Horizontal run of 32 VU bars at 2.5 pt wide with 2 pt gaps.
+        static let vuWidth: CGFloat = 142  // 32 × 4.5 − 2.0
+    }
+
+    // MARK: - VU meter
+
+    enum VU {
+        static let barCount: Int = 32
+        static let barWidth: CGFloat = 2.5
+        static let barGap: CGFloat = 2.0
+        /// Per-frame approach factor when signal rises.
+        static let attack: Float = 0.75
+        /// Per-frame approach factor when signal falls.
+        static let release: Float = 0.22
+
+        /// Bar colour — changes with level to give headroom feedback.
+        static let barColorLow  = SwiftUI.Color(red: 0.35, green: 0.82, blue: 0.52)  // teal-green
+        static let barColorMid  = SwiftUI.Color(red: 0.97, green: 0.76, blue: 0.28)  // amber
+        static let barColorHigh = SwiftUI.Color(red: 0.95, green: 0.35, blue: 0.35)  // red
+    }
+
+    // MARK: - Typography
+
+    /// Figtree is the Murr-flow brand face. SwiftUI falls back to the system font
+    /// automatically if Figtree isn't installed — no crash, nearly identical metrics.
+    enum Font {
+        static let label   = SwiftUI.Font.custom("Figtree", size: 13).weight(.medium)
+        static let body    = SwiftUI.Font.custom("Figtree", size: 13)
+        static let caption = SwiftUI.Font.custom("Figtree", size: 11)
+        static let small   = SwiftUI.Font.custom("Figtree", size: 10)
+    }
+
+    // MARK: - Color
+
+    enum Color {
+        /// Pill border — 1 pt white at 14 % opacity, spec-exact.
+        static let pillBorder = SwiftUI.Color.white.opacity(0.14)
+        /// windowBackgroundColor tint layered under .regularMaterial.
+        static let pillTint   = SwiftUI.Color(nsColor: .windowBackgroundColor).opacity(0.80)
+    }
+}
+
 // MARK: - Hex helpers
 
 private extension SwiftUI.Color {
