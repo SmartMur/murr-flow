@@ -32,7 +32,7 @@ Dictionary corrections live in `~/Library/Application Support/Murr-flow/dictiona
 ]
 ```
 
-Pattern matching is fuzzy — see `Sources/MurmurDictionary/` for the matching logic.
+Pattern matching is fuzzy — see `Sources/MurrFlowDictionary/` for the matching logic.
 
 ## Reporting security issues
 
