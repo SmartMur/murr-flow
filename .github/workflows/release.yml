@@ -1,0 +1,116 @@
+name: Release
+
+# Builds an unsigned Murr-flow.app, packages it into a DMG, and publishes a GitHub
+# Release. Fires on any `v*` tag push (e.g. `git tag v0.1.0 && git push origin v0.1.0`)
+# or manually via workflow_dispatch.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish DMG
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Package.swift declares swift-tools-version 6.2, but the runner defaults to an
+      # older Xcode (Swift 6.1) and fails to even parse the manifest. Select the newest
+      # Xcode present rather than pinning a version that will age out of the image.
+      - name: Select the newest Xcode
+        run: |
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest/Contents/Developer"
+
+      - name: Swift version
+        run: swift --version
+
+      # The app target needs macOS 26 and the Speech framework. If the macos-15 runner
+      # image does not yet ship the macOS 26 SDK, this step fails with a clear SDK error
+      # (missing Speech / unavailable API) — the fix is to update runs-on to a runner
+      # image that carries the macOS 26 SDK, not to change the code.
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Assemble the .app bundle
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          STAGE="$RUNNER_TEMP/MurrFlowStage"
+          BUNDLE="$STAGE/Murr-flow.app"
+          CONTENTS="$BUNDLE/Contents"
+
+          rm -rf "$STAGE"
+          mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
+
+          BIN="$(swift build -c release --show-bin-path)/MurrFlow"
+          cp "$BIN" "$CONTENTS/MacOS/MurrFlow"
+
+          cp Resources/Info.plist "$CONTENTS/Info.plist"
+          if [ -f Resources/AppIcon.icns ]; then
+            cp Resources/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
+          fi
+
+          printf 'APPL????' > "$CONTENTS/PkgInfo"
+
+          # Strip any extended attributes the SwiftPM binary picked up — codesign refuses
+          # a bundle carrying resource-fork / Finder-info detritus.
+          xattr -cr "$BUNDLE"
+
+          # Ad-hoc signature ("-"): unsigned distribution, users bypass Gatekeeper on first
+          # launch (see release notes). Hardened runtime + entitlements are still applied so
+          # the app requests microphone / accessibility correctly.
+          codesign --force --sign - \
+            --entitlements Resources/MurrFlow.entitlements \
+            --options runtime \
+            "$BUNDLE"
+
+          codesign --verify --verbose "$BUNDLE"
+
+          echo "BUNDLE=$BUNDLE" >> "$GITHUB_ENV"
+
+      - name: Create the DMG
+        run: |
+          set -euo pipefail
+          DMG="$RUNNER_TEMP/Murr-flow-$VERSION.dmg"
+          hdiutil create -volname "Murr-flow" -srcfolder "$BUNDLE" -ov -format UDZO "$DMG"
+          hdiutil verify "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "$TAG" \
+            --title "Murr-flow $TAG" \
+            --notes "$(cat <<'NOTES'
+          Native macOS push-to-talk dictation. Hold a key, talk, release — text appears at the cursor.
+
+          ## Install
+
+          1. Download `Murr-flow-${{ env.VERSION }}.dmg` below.
+          2. Open the .dmg and drag **Murr-flow** to `/Applications`.
+          3. This build is **unsigned**, so macOS Gatekeeper blocks it on first launch. Do one of:
+             - Right-click `Murr-flow.app` in `/Applications` → **Open** → **Open**, or
+             - Run in Terminal:
+               ```bash
+               xattr -dr com.apple.quarantine "/Applications/Murr-flow.app"
+               ```
+          4. Launch Murr-flow and grant **Accessibility** and **Microphone** permissions when prompted (both required).
+          5. Hold **fn** and speak. Release to transcribe and inject at the cursor.
+          NOTES
+          )" \
+            "$DMG"

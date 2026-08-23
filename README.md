@@ -4,26 +4,26 @@ Native macOS push-to-talk dictation. Hold a key, talk, release — text appears 
 
 Visually styled after [Whispr Flow](https://whisprflow.com). Built in Swift, forked from [per-simmons/murmur-youtube](https://github.com/per-simmons/murmur-youtube).
 
-**Status:** scaffold complete — implementation in progress.
+**Status:** feature-complete.
 
 ---
 
-## Install
+## Download and Install
 
-### Download (recommended)
+The easiest way to get Murr-flow is the prebuilt `.dmg` from the releases page.
 
-1. Go to [Releases](https://github.com/SmartMur/murr-flow/releases) and download the latest `Murr-flow-vX.X.X.dmg`
-2. Open the .dmg and drag **Murr-flow** to `/Applications`
-3. **First launch bypass** — macOS blocks unsigned apps by default. Do one of:
-   - Right-click `Murr-flow.app` → **Open** → **Open**
-   - Or run in Terminal:
+1. Go to [Releases](https://github.com/SmartMur/murr-flow/releases) and download the latest `Murr-flow-X.X.X.dmg`.
+2. Open the .dmg and drag **Murr-flow** to `/Applications`.
+3. **First launch bypass** — this build is unsigned, so macOS Gatekeeper blocks it by default. Do one of:
+   - Right-click `Murr-flow.app` → **Open** → **Open**, or
+   - Run in Terminal:
      ```bash
-     xattr -dr com.apple.quarantine /Applications/MurrFlow.app
+     xattr -dr com.apple.quarantine "/Applications/Murr-flow.app"
      ```
-4. Launch Murr-flow. Grant **Accessibility** and **Microphone** permissions when prompted (both are required)
+4. Launch Murr-flow. Grant **Accessibility** and **Microphone** permissions when prompted (both are required).
 5. Hold **fn** and speak. Release to transcribe and inject.
 
-### Build from source
+## Build from source
 
 ```bash
 git clone https://github.com/SmartMur/murr-flow.git
