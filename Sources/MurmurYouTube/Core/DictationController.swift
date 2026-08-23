@@ -15,7 +15,13 @@ func engineForCurrentSetting() -> any TranscriptionEngine {
     // Always invoked from `beginDictation`, which runs on the main actor.
     MainActor.assumeIsolated {
         switch Settings.shared.engine {
-        case .apple: AppleSpeechEngine()
+        // "Apple" is a user-facing choice, not an implementation. The macOS 26
+        // SpeechAnalyzer stack is Apple-Silicon-only; on Intel the same choice has to
+        // resolve to SFSpeechRecognizer or there is no working engine at all.
+        case .apple:
+            AppleSpeechSupport.hasSpeechAnalyzer
+                ? (AppleSpeechEngine() as any TranscriptionEngine)
+                : (LegacySpeechEngine() as any TranscriptionEngine)
         case .parakeet: ParakeetEngine()
         }
     }
@@ -36,6 +42,17 @@ final class DictationController {
             case .starting, .listening, .finishing: true
             case .idle, .error: false
             }
+        }
+
+        /// Whether the HUD should be on screen.
+        ///
+        /// Distinct from `isActive`: a failure is not an active dictation, but it is the
+        /// only moment the user is told anything went wrong. Leaving `.error` off screen
+        /// meant every engine, permission and audio failure was silent — the app simply
+        /// did nothing when you spoke.
+        var isVisible: Bool {
+            if case .error = self { return true }
+            return isActive
         }
     }
 
@@ -156,7 +173,11 @@ final class DictationController {
                 // kills the process. Parakeet is the flexible one (its `feed` converts
                 // int16/int32/float32), so the strict engine picks the format and the
                 // tolerant engine adapts. Both still replay the identical buffers.
-                let formatOwner: any TranscriptionEngine = isComparing ? AppleSpeechEngine() : engine
+                let formatOwner: any TranscriptionEngine = isComparing
+                    ? (AppleSpeechSupport.hasSpeechAnalyzer
+                        ? (AppleSpeechEngine() as any TranscriptionEngine)
+                        : (LegacySpeechEngine() as any TranscriptionEngine))
+                    : engine
                 guard let format = await formatOwner.preferredInputFormat() else {
                     throw TranscriptionError.noAudioFormat
                 }
@@ -415,7 +436,7 @@ final class DictationController {
     }
 
     private func fail(_ message: String) {
-        Log.app.error("\(message)")
+        Log.app.error("dictation failed: \(message, privacy: .public)")
         capture.stop()
         audioContinuation?.finish()
         audioContinuation = nil
@@ -428,7 +449,7 @@ final class DictationController {
         level = 0
 
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(6))
             if case .error = state { state = .idle }
         }
     }

@@ -56,7 +56,11 @@ struct SettingsWindow: View {
                         ? "Apple's on-device transcriber. Streams text while you speak; no download."
                         : "Parakeet on the Neural Engine. Resolves on release; ~470 MB model.")
                     if !ParakeetSupport.isAvailable {
-                        note("Parakeet requires Apple Silicon; this Intel Mac uses Apple's engine.")
+                        note("Parakeet requires Apple Silicon. This Mac uses Apple\'s "
+                             + (AppleSpeechSupport.hasSpeechAnalyzer
+                                ? "on-device SpeechAnalyzer."
+                                : "Speech Recognition engine, which needs Speech Recognition "
+                                  + "access in System Settings ▸ Privacy & Security."))
                     }
                 }
 
