@@ -35,12 +35,7 @@ final class DictionaryStore {
     /// Set while we're writing, so our own save doesn't read back as an external edit.
     private var isSaving = false
 
-    static var fileURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MurmurYouTube", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.appendingPathComponent("dictionary.txt")
-    }
+    static var fileURL: URL { AppSupport.directory.appendingPathComponent("dictionary.txt") }
 
     private init() {
         load()
@@ -134,7 +129,7 @@ final class DictionaryStore {
     }
 
     private static let header = """
-        # Murmur YouTube dictionary
+        # Murr-flow dictionary
         #
         #   Anthropic                 a term — the engine is told this word exists
         #   cloud code -> Claude Code a correction — when you hear X, write Y

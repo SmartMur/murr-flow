@@ -71,12 +71,7 @@ struct DictationRun: Codable, Sendable, Identifiable {
 /// data, the app pushes a freshly rendered page after each run and the browser just reloads.
 @MainActor
 enum RunLog {
-    static var directory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MurmurYouTube", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base
-    }
+    static var directory: URL { AppSupport.directory }
 
     static var dashboardURL: URL { directory.appendingPathComponent("dashboard.html") }
     private static var runsURL: URL { directory.appendingPathComponent("runs.jsonl") }

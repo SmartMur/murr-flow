@@ -22,13 +22,13 @@ let package = Package(
         // The dictionary is its own target so it can be tested directly.
         .target(
             name: "MurrFlowDictionary",
-            path: "Sources/MurmurDictionary",
+            path: "Sources/MurrFlowDictionary",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
             name: "MurrFlow",
             dependencies: appDependencies,
-            path: "Sources/MurmurYouTube",
+            path: "Sources/MurrFlow",
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]
@@ -36,7 +36,7 @@ let package = Package(
         .testTarget(
             name: "MurrFlowDictionaryTests",
             dependencies: ["MurrFlowDictionary"],
-            path: "Tests/MurmurDictionaryTests",
+            path: "Tests/MurrFlowDictionaryTests",
             resources: [.copy("dictionary-test-vectors.json")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
