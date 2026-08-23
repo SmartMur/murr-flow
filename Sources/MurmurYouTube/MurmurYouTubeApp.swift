@@ -213,11 +213,13 @@ private struct MenuContent: View {
             }
         }
 
-        Toggle("Compare mode (both engines)", isOn: $settings.compareMode)
+        if ParakeetSupport.isAvailable {
+            Toggle("Compare mode (both engines)", isOn: $settings.compareMode)
+        }
 
         if !settings.compareMode {
             Picker("Engine", selection: $settings.engine) {
-                ForEach(SpeechEngineChoice.allCases, id: \.self) { choice in
+                ForEach(SpeechEngineChoice.supportedCases, id: \.self) { choice in
                     Text(choice.displayName).tag(choice)
                 }
             }
@@ -237,12 +239,14 @@ private struct MenuContent: View {
 
         Divider()
 
-        Button("Show comparison window") {
-            RunStore.shared.reload()
-            openWindow(id: "comparison")
-            NSApp.activate(ignoringOtherApps: true)
+        if ParakeetSupport.isAvailable {
+            Button("Show comparison window") {
+                RunStore.shared.reload()
+                openWindow(id: "comparison")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            .keyboardShortcut("d")
         }
-        .keyboardShortcut("d")
 
         if settings.engine == .parakeet {
             Button(parakeetStatus) { preloadParakeet() }

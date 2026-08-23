@@ -1,6 +1,18 @@
 import AVFoundation
+#if canImport(FluidAudio)
 import FluidAudio
+#endif
 import Foundation
+
+enum ParakeetSupport {
+    #if canImport(FluidAudio)
+    static let isAvailable = true
+    #else
+    static let isAvailable = false
+    #endif
+}
+
+#if canImport(FluidAudio)
 
 /// NVIDIA Parakeet TDT 0.6B, compiled to CoreML and run on the Neural Engine via FluidAudio.
 ///
@@ -158,3 +170,26 @@ actor ParakeetModels {
         }
     }
 }
+#else
+/// Intel Macs use Apple's native engine. FluidAudio ASR requires Apple Silicon and is
+/// deliberately absent from this slice of the universal application.
+actor ParakeetEngine: TranscriptionEngine {
+    func preferredInputFormat() async -> AVAudioFormat? { nil }
+
+    func start() async throws -> AsyncThrowingStream<TranscriptionChunk, Error> {
+        throw TranscriptionError.parakeetUnavailable
+    }
+
+    func feed(_ chunk: AudioChunk) async {}
+    func finish() async {}
+}
+
+actor ParakeetModels {
+    static let shared = ParakeetModels()
+    nonisolated static let isDownloaded = false
+
+    func manager() async throws {
+        throw TranscriptionError.parakeetUnavailable
+    }
+}
+#endif

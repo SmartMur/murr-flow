@@ -6,6 +6,10 @@ enum SpeechEngineChoice: String, CaseIterable, Sendable {
     case apple
     case parakeet
 
+    static var supportedCases: [Self] {
+        ParakeetSupport.isAvailable ? allCases : [.apple]
+    }
+
     var displayName: String {
         switch self {
         case .apple: "Apple (streaming)"
@@ -66,10 +70,13 @@ final class Settings {
         let raw = defaults.string(forKey: Keys.pushToTalkKey) ?? PushToTalkKey.rightOption.rawValue
         pushToTalkKey = PushToTalkKey(rawValue: raw) ?? .rightOption
         // Apple by default: no download, no dependency, live text while speaking.
-        engine = SpeechEngineChoice(rawValue: defaults.string(forKey: Keys.engine) ?? "") ?? .apple
+        let storedEngine = SpeechEngineChoice(rawValue: defaults.string(forKey: Keys.engine) ?? "") ?? .apple
+        engine = storedEngine == .parakeet && !ParakeetSupport.isAvailable ? .apple : storedEngine
         cleanupEnabled = defaults.object(forKey: Keys.cleanupEnabled) as? Bool ?? true
         smartCleanup = defaults.object(forKey: Keys.smartCleanup) as? Bool ?? false
-        compareMode = defaults.object(forKey: Keys.compareMode) as? Bool ?? false
+        compareMode = ParakeetSupport.isAvailable
+            ? defaults.object(forKey: Keys.compareMode) as? Bool ?? false
+            : false
         soundEnabled = defaults.object(forKey: Keys.soundEnabled) as? Bool ?? true
     }
 }

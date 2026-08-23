@@ -36,7 +36,7 @@ struct SettingsWindow: View {
 
                 panel(label: "Model") {
                     HStack(spacing: DS.Space.snug) {
-                        ForEach(SpeechEngineChoice.allCases, id: \.self) { choice in
+                        ForEach(SpeechEngineChoice.supportedCases, id: \.self) { choice in
                             TransportKey(
                                 title: choice == .apple ? "Apple" : "Parakeet",
                                 isEngaged: settings.engine == choice,
@@ -55,6 +55,9 @@ struct SettingsWindow: View {
                     note(settings.engine == .apple
                         ? "Apple's on-device transcriber. Streams text while you speak; no download."
                         : "Parakeet on the Neural Engine. Resolves on release; ~470 MB model.")
+                    if !ParakeetSupport.isAvailable {
+                        note("Parakeet requires Apple Silicon; this Intel Mac uses Apple's engine.")
+                    }
                 }
 
                 panel(label: "Cleanup") {

@@ -2,19 +2,6 @@ EXEC     := MurrFlow
 CONFIG   := debug
 ARCHS    :=
 
-## When building more than one architecture, SwiftPM needs the Swift Build backend to
-## produce a universal macOS binary from one invocation.
-ifneq ($(words $(ARCHS)),0)
-ARCH_ARGS := $(foreach arch,$(ARCHS),--arch $(arch))
-endif
-ifneq ($(words $(ARCHS)),1)
-ifneq ($(words $(ARCHS)),0)
-BUILD_SYSTEM_ARGS := --build-system swiftbuild
-endif
-endif
-
-SWIFT_BUILD_ARGS := $(ARCH_ARGS) $(BUILD_SYSTEM_ARGS)
-
 ## Build products live OUTSIDE this directory, for the same reason the .app does.
 ##
 ## ~/Desktop is iCloud/file-provider synced, and the provider mutates files inside
@@ -22,7 +9,7 @@ SWIFT_BUILD_ARGS := $(ARCH_ARGS) $(BUILD_SYSTEM_ARGS)
 ## the build" on random object files, and occasionally a wedged swift-frontend stuck at
 ## 0% CPU. Moving the scratch path to ~/Library/Caches (never synced) removes the race.
 SCRATCH  := $(HOME)/Library/Caches/MurrFlowBuild/scratch
-BUILD    := $(SCRATCH)/$(CONFIG)/$(EXEC)
+PRODUCT  := $(HOME)/Library/Caches/MurrFlowBuild/products/$(CONFIG)/$(EXEC)
 
 ## The bundle is assembled and signed OUTSIDE this directory on purpose.
 ##
@@ -51,7 +38,28 @@ endif
 all: app
 
 build:
-	swift build -c $(CONFIG) $(SWIFT_BUILD_ARGS) --scratch-path "$(SCRATCH)"
+	@mkdir -p "$(dir $(PRODUCT))"
+	@if [ "$(words $(ARCHS))" -gt 1 ]; then \
+		case " $(ARCHS) " in *" arm64 "*" x86_64 "*) ;; \
+		*) echo "universal builds require ARCHS=\"arm64 x86_64\"" >&2; exit 2 ;; esac; \
+		ARM_SCRATCH="$(SCRATCH)-arm64"; \
+		INTEL_SCRATCH="$(SCRATCH)-x86_64"; \
+		MURR_FLOW_ENABLE_PARAKEET=1 swift build -c $(CONFIG) --arch arm64 --scratch-path "$$ARM_SCRATCH"; \
+		MURR_FLOW_ENABLE_PARAKEET=0 swift build -c $(CONFIG) --arch x86_64 --scratch-path "$$INTEL_SCRATCH"; \
+		ARM_BIN="$$(MURR_FLOW_ENABLE_PARAKEET=1 swift build -c $(CONFIG) --arch arm64 --scratch-path "$$ARM_SCRATCH" --show-bin-path)/$(EXEC)"; \
+		INTEL_BIN="$$(MURR_FLOW_ENABLE_PARAKEET=0 swift build -c $(CONFIG) --arch x86_64 --scratch-path "$$INTEL_SCRATCH" --show-bin-path)/$(EXEC)"; \
+		lipo -create "$$ARM_BIN" "$$INTEL_BIN" -output "$(PRODUCT)"; \
+	elif [ "$(firstword $(ARCHS))" = "x86_64" ]; then \
+		MURR_FLOW_ENABLE_PARAKEET=0 swift build -c $(CONFIG) --arch x86_64 --scratch-path "$(SCRATCH)"; \
+		BIN="$$(MURR_FLOW_ENABLE_PARAKEET=0 swift build -c $(CONFIG) --arch x86_64 --scratch-path "$(SCRATCH)" --show-bin-path)/$(EXEC)"; \
+		cp "$$BIN" "$(PRODUCT)"; \
+	else \
+		ARCH_ARG=""; \
+		if [ -n "$(firstword $(ARCHS))" ]; then ARCH_ARG="--arch $(firstword $(ARCHS))"; fi; \
+		MURR_FLOW_ENABLE_PARAKEET=1 swift build -c $(CONFIG) $$ARCH_ARG --scratch-path "$(SCRATCH)"; \
+		BIN="$$(MURR_FLOW_ENABLE_PARAKEET=1 swift build -c $(CONFIG) $$ARCH_ARG --scratch-path "$(SCRATCH)" --show-bin-path)/$(EXEC)"; \
+		cp "$$BIN" "$(PRODUCT)"; \
+	fi
 
 ## Regenerates AppIcon.icns from Tools/makeicon.swift. Not a dependency of `app` — the
 ## icon rarely changes and rendering 10 PNGs on every build is wasted time.
@@ -65,8 +73,7 @@ icon:
 app: build
 	@rm -rf "$(BUNDLE)"
 	@mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources"
-	@BIN="$$(swift build -c $(CONFIG) $(SWIFT_BUILD_ARGS) --scratch-path "$(SCRATCH)" --show-bin-path)/$(EXEC)"; \
-	cp "$$BIN" "$(CONTENTS)/MacOS/$(EXEC)"
+	@cp "$(PRODUCT)" "$(CONTENTS)/MacOS/$(EXEC)"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	@if [ -f Resources/AppIcon.icns ]; then cp Resources/AppIcon.icns "$(CONTENTS)/Resources/"; fi
 	@printf 'APPL????' > "$(CONTENTS)/PkgInfo"
@@ -99,4 +106,4 @@ install: app
 	@echo "installed to /Applications/$(APPNAME)"
 
 clean:
-	@rm -rf .build "$(STAGE)" "$(SCRATCH)"
+	@rm -rf .build "$(STAGE)" "$(SCRATCH)" "$(SCRATCH)-arm64" "$(SCRATCH)-x86_64"

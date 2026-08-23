@@ -45,6 +45,7 @@ enum TranscriptionError: LocalizedError {
     case modelInstallFailed(String)
     case noAudioFormat
     case notRunning
+    case parakeetUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -56,6 +57,8 @@ enum TranscriptionError: LocalizedError {
             return "No compatible audio format available for the speech engine."
         case .notRunning:
             return "The transcription engine isn't running."
+        case .parakeetUnavailable:
+            return "Parakeet requires an Apple Silicon Mac. Select the Apple engine on this Mac."
         }
     }
 }
