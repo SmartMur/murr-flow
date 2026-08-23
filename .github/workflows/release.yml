@@ -57,7 +57,20 @@ jobs:
           set -euo pipefail
           DMG="$RUNNER_TEMP/Murr-flow-$VERSION.dmg"
           hdiutil create -volname "Murr-flow" -srcfolder "$BUNDLE" -ov -format UDZO "$DMG"
-          hdiutil verify "$DMG"
+
+          # `hdiutil create` can return before the runner fully releases the image file.
+          # Retry verification briefly instead of treating that transient lock as a
+          # packaging failure.
+          for attempt in 1 2 3 4 5; do
+            if hdiutil verify "$DMG"; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              exit 1
+            fi
+            sleep 2
+          done
+
           echo "DMG=$DMG" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release
