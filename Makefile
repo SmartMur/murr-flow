@@ -40,8 +40,9 @@ all: app
 build:
 	@mkdir -p "$(dir $(PRODUCT))"
 	@if [ "$(words $(ARCHS))" -gt 1 ]; then \
-		case " $(ARCHS) " in *" arm64 "*" x86_64 "*) ;; \
-		*) echo "universal builds require ARCHS=\"arm64 x86_64\"" >&2; exit 2 ;; esac; \
+		if [ "$(ARCHS)" != "arm64 x86_64" ] && [ "$(ARCHS)" != "x86_64 arm64" ]; then \
+			echo "universal builds require ARCHS=\"arm64 x86_64\"" >&2; exit 2; \
+		fi; \
 		ARM_SCRATCH="$(SCRATCH)-arm64"; \
 		INTEL_SCRATCH="$(SCRATCH)-x86_64"; \
 		MURR_FLOW_ENABLE_PARAKEET=1 swift build -c $(CONFIG) --arch arm64 --scratch-path "$$ARM_SCRATCH"; \
