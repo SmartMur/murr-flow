@@ -46,6 +46,8 @@ enum TranscriptionError: LocalizedError {
     case noAudioFormat
     case notRunning
     case parakeetUnavailable
+    case speechRecognitionDenied
+    case recognitionFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -59,6 +61,10 @@ enum TranscriptionError: LocalizedError {
             return "The transcription engine isn't running."
         case .parakeetUnavailable:
             return "Parakeet requires an Apple Silicon Mac. Select the Apple engine on this Mac."
+        case .recognitionFailed(let detail):
+            return "Transcription failed: \(detail)"
+        case .speechRecognitionDenied:
+            return "Speech Recognition access is off. Enable it in System Settings ▸ Privacy & Security ▸ Speech Recognition."
         }
     }
 }

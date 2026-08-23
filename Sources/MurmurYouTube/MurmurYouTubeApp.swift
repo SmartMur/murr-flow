@@ -52,7 +52,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var stateObservation: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Both checks run before anything is wired up: a second instance must not install
+        // a competing event tap, and a translocated copy can never hold the Accessibility
+        // grant the tap depends on. Diagnosing either from the symptom ("nothing happens
+        // when I hold the key") is far harder than refusing to start.
+        if Startup.anotherInstanceIsRunning {
+            Startup.yieldToExistingInstance()
+            return
+        }
+
         NSApp.setActivationPolicy(.regular)
+
+        if Startup.isTranslocated {
+            Startup.warnAboutTranslocation()
+        }
 
         hud = HUDPanel(controller: controller)
 
@@ -81,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeState()
         startTapHealthCheck()
 
-        Log.app.info("Murr-flow ready — hold \(Settings.shared.pushToTalkKey.displayName) to dictate")
+        Log.app.info("Murr-flow ready — hold \(Settings.shared.pushToTalkKey.displayName, privacy: .public) to dictate")
     }
 
     /// `murrflow://clear` and `murrflow://show` — used by the HTML dashboard and as
@@ -122,7 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                if self.controller.state.isActive {
+                if self.controller.state.isVisible {
                     self.hud?.present()
                 } else {
                     self.hud?.dismiss()
