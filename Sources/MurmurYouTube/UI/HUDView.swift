@@ -14,7 +14,7 @@ struct HUDView: View {
     var body: some View {
         HStack(spacing: 0) {
             // VU meter
-            VUMeter(level: controller.level, isActive: controller.state == .listening)
+            PillVUMeter(level: controller.level, isActive: controller.state == .listening)
                 .frame(width: MF.Pill.vuWidth, height: MF.Pill.height - 28)
                 .padding(.leading, 18)
 
@@ -79,7 +79,7 @@ struct HUDView: View {
 /// Golden-ratio phase offsets make bars ripple instead of pumping in unison.
 /// `controller.level` is already smoothed by DictationController, so no second
 /// smoothing pass is needed here.
-private struct VUMeter: View {
+private struct PillVUMeter: View {
     let level: Float
     let isActive: Bool
 
