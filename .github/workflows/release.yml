@@ -41,8 +41,16 @@ jobs:
       # image does not yet ship the macOS 26 SDK, `make app CONFIG=release` fails with a
       # clear SDK error — the fix is to update runs-on to a runner image that carries the
       # macOS 26 SDK, not to change the code.
-      - name: Build the release app bundle
-        run: make app CONFIG=release
+      - name: Build the universal release app bundle
+        run: make app CONFIG=release ARCHS="arm64 x86_64"
+
+      - name: Confirm universal binary slices
+        run: |
+          BIN="$HOME/Library/Caches/MurrFlowBuild/Murr-flow.app/Contents/MacOS/MurrFlow"
+          archs="$(lipo -archs "$BIN")"
+          echo "$archs"
+          [[ "$archs" == *"x86_64"* ]]
+          [[ "$archs" == *"arm64"* ]]
 
       - name: Capture release metadata
         run: |

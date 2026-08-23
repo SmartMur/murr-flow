@@ -71,8 +71,16 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Build the release app bundle
-        run: make app CONFIG=release
+      - name: Build the universal release app bundle
+        run: make app CONFIG=release ARCHS="arm64 x86_64"
+
+      - name: Confirm universal binary slices
+        run: |
+          BIN="$HOME/Library/Caches/MurrFlowBuild/Murr-flow.app/Contents/MacOS/MurrFlow"
+          archs="$(lipo -archs "$BIN")"
+          echo "$archs"
+          [[ "$archs" == *"x86_64"* ]]
+          [[ "$archs" == *"arm64"* ]]
 
       - name: Upload unsigned app artifact
         uses: actions/upload-artifact@v4

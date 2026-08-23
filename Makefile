@@ -1,5 +1,19 @@
 EXEC     := MurrFlow
 CONFIG   := debug
+ARCHS    :=
+
+## When building more than one architecture, SwiftPM needs the Swift Build backend to
+## produce a universal macOS binary from one invocation.
+ifneq ($(words $(ARCHS)),0)
+ARCH_ARGS := $(foreach arch,$(ARCHS),--arch $(arch))
+endif
+ifneq ($(words $(ARCHS)),1)
+ifneq ($(words $(ARCHS)),0)
+BUILD_SYSTEM_ARGS := --build-system swiftbuild
+endif
+endif
+
+SWIFT_BUILD_ARGS := $(ARCH_ARGS) $(BUILD_SYSTEM_ARGS)
 
 ## Build products live OUTSIDE this directory, for the same reason the .app does.
 ##
@@ -37,7 +51,7 @@ endif
 all: app
 
 build:
-	swift build -c $(CONFIG) --scratch-path "$(SCRATCH)"
+	swift build -c $(CONFIG) $(SWIFT_BUILD_ARGS) --scratch-path "$(SCRATCH)"
 
 ## Regenerates AppIcon.icns from Tools/makeicon.swift. Not a dependency of `app` — the
 ## icon rarely changes and rendering 10 PNGs on every build is wasted time.
@@ -51,7 +65,8 @@ icon:
 app: build
 	@rm -rf "$(BUNDLE)"
 	@mkdir -p "$(CONTENTS)/MacOS" "$(CONTENTS)/Resources"
-	@cp $(BUILD) "$(CONTENTS)/MacOS/$(EXEC)"
+	@BIN="$$(swift build -c $(CONFIG) $(SWIFT_BUILD_ARGS) --scratch-path "$(SCRATCH)" --show-bin-path)/$(EXEC)"; \
+	cp "$$BIN" "$(CONTENTS)/MacOS/$(EXEC)"
 	@cp Resources/Info.plist "$(CONTENTS)/Info.plist"
 	@if [ -f Resources/AppIcon.icns ]; then cp Resources/AppIcon.icns "$(CONTENTS)/Resources/"; fi
 	@printf 'APPL????' > "$(CONTENTS)/PkgInfo"
@@ -63,6 +78,9 @@ app: build
 		--options runtime \
 		--timestamp=none \
 		"$(BUNDLE)"
+	@if [ -n "$(strip $(ARCHS))" ]; then \
+		echo "architectures: $$(lipo -archs "$(CONTENTS)/MacOS/$(EXEC)")"; \
+	fi
 	@echo "built $(BUNDLE)  [signed: $(SIGN_ID)]"
 
 ## Only ever targets the MurrFlow executable — never the separate `murmur` app.
