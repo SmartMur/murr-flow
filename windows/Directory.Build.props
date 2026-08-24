@@ -39,8 +39,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
 
-    <Company>Pivot Studio</Company>
+    <!-- Company and Copyright are deliberately unset. This repo carries no LICENSE, and
+         the history has more than one author, so the build asserts no owner rather than
+         asserting the wrong one. Set them once the licensing question is settled. -->
     <Product>Murr-flow</Product>
-    <Copyright>Copyright © Pat Simmons</Copyright>
   </PropertyGroup>
 </Project>
