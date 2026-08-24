@@ -10,7 +10,7 @@ let packageDependencies: [Package.Dependency] = parakeetEnabled
     ? [.package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.6")]
     : []
 
-let appDependencies: [Target.Dependency] = ["MurrFlowDictionary"] + (parakeetEnabled
+let appDependencies: [Target.Dependency] = ["MurrFlowDictionary", "MurrFlowTranscript"] + (parakeetEnabled
     ? [.product(name: "FluidAudio", package: "FluidAudio")]
     : [])
 
@@ -25,6 +25,15 @@ let package = Package(
             path: "Sources/MurrFlowDictionary",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        // Segment stitching lives outside the executable so it can be tested. An
+        // executableTarget cannot be imported by a test target, and the behaviour that
+        // broke — pauses, task rotation, out-of-order finals — is exactly what needs
+        // regression cover.
+        .target(
+            name: "MurrFlowTranscript",
+            path: "Sources/MurrFlowTranscript",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
         .executableTarget(
             name: "MurrFlow",
             dependencies: appDependencies,
@@ -32,6 +41,12 @@ let package = Package(
             swiftSettings: [
                 .swiftLanguageMode(.v6)
             ]
+        ),
+        .testTarget(
+            name: "MurrFlowTranscriptTests",
+            dependencies: ["MurrFlowTranscript"],
+            path: "Tests/MurrFlowTranscriptTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "MurrFlowDictionaryTests",
