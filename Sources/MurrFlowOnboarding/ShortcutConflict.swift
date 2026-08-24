@@ -3,7 +3,7 @@ import Foundation
 /// Detects push-to-talk keys already claimed by another dictation app.
 ///
 /// This exists because of a real, silent failure: Wispr Flow binds push-to-talk to the
-/// `fn` key (virtual keycode 63), which was also Murr-flow's default. Both apps install a
+/// `fn` key (virtual keycode 63), which was previously Murr-flow's default. Both apps install a
 /// `CGEventTap` for the same key, both fire on every press, and the user sees two HUDs,
 /// two recordings, or — depending on tap order — nothing useful at all. Nothing in either
 /// app reports the clash, so it reads as "Murr-flow is broken".

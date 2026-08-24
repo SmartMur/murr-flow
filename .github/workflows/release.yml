@@ -103,11 +103,10 @@ jobs:
                xattr -dr com.apple.quarantine "/Applications/Murr-flow.app"
                ```
           4. Launch Murr-flow and grant **Accessibility** and **Microphone** permissions when prompted (both required).
-          5. In **System Settings → Keyboard**, set **“Press 🌐 key to”** to **Do Nothing**, so macOS
-             does not claim fn for its own dictation while Murr-flow is listening.
-          6. Hold **fn** and speak. Release to transcribe and inject at the cursor.
+          5. Hold **Right Option (⌥)** and speak. Release to transcribe and inject at the cursor.
 
-          Prefer a different key? Menu bar icon → **Push-to-talk key** (fn, Right ⌥, Right ⌘).
+          Prefer a different key? Menu bar icon → **Push-to-talk key** (`fn`, Right ⌥, Right ⌘).
+          If you choose `fn`, make sure macOS and another dictation app do not already claim it.
           NOTES
           )" \
             "$DMG"

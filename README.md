@@ -21,13 +21,11 @@ The easiest way to get Murr-flow is the prebuilt `.dmg` from the releases page.
      xattr -dr com.apple.quarantine "/Applications/Murr-flow.app"
      ```
 4. Launch Murr-flow. Grant **Accessibility** and **Microphone** permissions when prompted (both are required).
-5. **Free up the fn key.** macOS binds fn by default. Open **System Settings → Keyboard**
-   and set **“Press 🌐 key to”** to **Do Nothing**, otherwise macOS opens its own
-   dictation or the emoji picker while Murr-flow is listening.
-6. Hold **fn** and speak. Release to transcribe and inject.
+5. Hold **Right Option (⌥)** and speak. Release to transcribe and inject.
 
-If fn is awkward on your keyboard, pick a different key from the menu bar icon →
-**Push-to-talk key** (Right ⌥ and Right ⌘ are also available). The choice is remembered.
+Pick a different key from the menu bar icon → **Push-to-talk key** (`fn` and Right ⌘ are
+also available). The choice is remembered. If you choose `fn`, make sure macOS and another
+dictation app do not already claim it.
 
 ## Build from source
 

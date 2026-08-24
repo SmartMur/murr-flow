@@ -10,7 +10,7 @@ let packageDependencies: [Package.Dependency] = parakeetEnabled
     ? [.package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.6")]
     : []
 
-let appDependencies: [Target.Dependency] = ["MurrFlowDictionary"] + (parakeetEnabled
+let appDependencies: [Target.Dependency] = ["MurrFlowDictionary", "MurrFlowHotkey"] + (parakeetEnabled
     ? [.product(name: "FluidAudio", package: "FluidAudio")]
     : [])
 
@@ -23,6 +23,11 @@ let package = Package(
         .target(
             name: "MurrFlowDictionary",
             path: "Sources/MurrFlowDictionary",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .target(
+            name: "MurrFlowHotkey",
+            path: "Sources/MurrFlowHotkey",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
@@ -38,6 +43,12 @@ let package = Package(
             dependencies: ["MurrFlowDictionary"],
             path: "Tests/MurrFlowDictionaryTests",
             resources: [.copy("dictionary-test-vectors.json")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "MurrFlowHotkeyTests",
+            dependencies: ["MurrFlowHotkey"],
+            path: "Tests/MurrFlowHotkeyTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

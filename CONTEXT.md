@@ -6,10 +6,10 @@
 The application. Native macOS push-to-talk dictation tool, visually styled after Whispr Flow, branded independently as Murr-flow.
 
 **Push-to-talk session**
-The complete lifecycle triggered by the hotkey: fn key down → audio capture starts → fn key up → transcription runs → text injection completes. One session = one utterance = one injected string.
+The complete lifecycle triggered by the configured hotkey: key down → audio capture starts → key up → transcription runs → text injection completes. One session = one utterance = one injected string.
 
 **Hotkey listener**
-A `CGEvent` tap registered system-wide that intercepts the configured key (default: fn) without consuming it for the OS. Requires the Accessibility entitlement and a TCC grant from the user.
+A `CGEvent` tap registered system-wide that intercepts the configured key (default: Right Option) without consuming unrelated events. Requires the Accessibility entitlement and a TCC grant from the user.
 
 **Speech engine**
 The transcription backend. Two variants:
