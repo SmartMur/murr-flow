@@ -8,7 +8,6 @@ import Testing
 /// Every test here is a case the `Speech` framework will not reproduce on demand — a
 /// pause, a sixty-second task ceiling, a late callback — which is why the logic sits in a
 /// value type instead of inside the engine.
-@Suite("Transcript segment assembly")
 struct TranscriptSessionTests {
     /// Drives a session through a list of events and returns everything it asked for.
     private func run(_ events: [TranscriptSession.Event]) -> (TranscriptSession, [TranscriptSession.Action]) {
