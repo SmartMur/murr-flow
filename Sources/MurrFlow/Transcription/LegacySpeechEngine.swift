@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import MurrFlowTranscript
 import Speech
 
 /// Streaming on-device transcription via the classic `SFSpeechRecognizer` API.
@@ -13,16 +14,57 @@ import Speech
 /// Selection is automatic: `AppleSpeechSupport.isAvailable` decides which engine backs
 /// the user's "Apple" choice. The user never picks "legacy" — on a Mac without the new
 /// stack, this *is* Apple's engine.
+///
+/// ## One hold is many recognition tasks
+///
+/// The API is built around utterances, not around a key being held. It finalizes whenever
+/// it decides speech paused, and a task stops at roughly a minute whatever you do. So a
+/// hold is served by a *series* of tasks, each tagged with a segment index, and
+/// `TranscriptSession` stitches their results back into one transcript in the right order.
+/// This engine owns only the `Speech` objects and the rotation timer; every decision about
+/// what to show and when the dictation is over lives in that value type, where it can be
+/// tested without a microphone.
 actor LegacySpeechEngine: TranscriptionEngine {
+    /// A recognition task is cut off at about 60s. Rotating at 50 leaves room for the
+    /// final result of the outgoing task to arrive before the ceiling does.
+    private static let defaultRotationInterval = Duration.seconds(50)
+
     private let locale: Locale
+    private let rotationInterval: Duration
 
     private var recognizer: SFSpeechRecognizer?
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
     private var chunkContinuation: AsyncThrowingStream<TranscriptionChunk, Error>.Continuation?
 
-    init(locale: Locale = Locale.current) {
+    private var session = TranscriptSession()
+    /// The live recognition request and task per segment index. A rotated-away segment
+    /// stays here until its final result lands, because cancelling it would discard that.
+    private var requests: [Int: SFSpeechAudioBufferRecognitionRequest] = [:]
+    private var tasks: [Int: SFSpeechRecognitionTask] = [:]
+    /// The segment audio is currently routed to.
+    private var openSegment: Int?
+    private var rotationTask: Task<Void, Never>?
+    /// Read once at `start()`, because `startTask` runs per segment and must not hop to
+    /// the main actor in the middle of a hold.
+    private var biasPhrases: [String] = []
+    /// Audio that arrived while no segment was open.
+    ///
+    /// There is one async hop between the recognizer reporting a final and this actor
+    /// opening the replacement task, and a speaker who pauses only briefly is already
+    /// talking again inside it. Holding those buffers and flushing them into the next
+    /// request is the difference between losing the first word after every pause and
+    /// losing nothing. Capped because a hold that ends with no segment ever reopening
+    /// must not grow this without bound.
+    private var orphanedAudio: [AudioChunk] = []
+    private static let orphanLimit = 64
+    /// Segments that have actually had audio appended to them.
+    private var segmentsWithAudio: Set<Int> = []
+
+    init(
+        locale: Locale = Locale.current,
+        rotationInterval: Duration = LegacySpeechEngine.defaultRotationInterval
+    ) {
         self.locale = locale
+        self.rotationInterval = rotationInterval
     }
 
     /// 16 kHz mono float32 — comfortably within what `SFSpeechRecognizer` accepts, and
@@ -45,27 +87,104 @@ actor LegacySpeechEngine: TranscriptionEngine {
         }
         self.recognizer = recognizer
 
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        // On-device when the OS supports it for this locale; otherwise Apple's server.
-        // Logged publicly so a field transcript shows which path ran.
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-        request.taskHint = .dictation
-        // Same dictionary nudge AppleSpeechEngine applies via AnalysisContext.
-        let phrases = await MainActor.run { DictionaryStore.shared.biasPhrases }
-        if !phrases.isEmpty { request.contextualStrings = phrases }
-        self.request = request
-
         let (chunks, continuation) = AsyncThrowingStream<TranscriptionChunk, Error>.makeStream()
         chunkContinuation = continuation
 
-        Log.speech.info("SFSpeechRecognizer started — locale \(recognizer.locale.identifier, privacy: .public), onDevice \(request.requiresOnDeviceRecognition, privacy: .public)")
+        biasPhrases = await MainActor.run { DictionaryStore.shared.biasPhrases }
+
+        Log.speech.info("SFSpeechRecognizer started — locale \(recognizer.locale.identifier, privacy: .public), onDevice \(recognizer.supportsOnDeviceRecognition, privacy: .public)")
+
+        session = TranscriptSession()
+        apply(session.start())
+
+        return chunks
+    }
+
+    func feed(_ chunk: AudioChunk) async {
+        guard let openSegment, let request = requests[openSegment] else {
+            if orphanedAudio.count < Self.orphanLimit { orphanedAudio.append(chunk) }
+            return
+        }
+        segmentsWithAudio.insert(openSegment)
+        request.append(chunk.buffer)
+    }
+
+    func finish() async {
+        let trailing = openSegment
+        apply(session.handle(.finishRequested))
+
+        // A pause right before the key came up leaves a freshly-opened segment that never
+        // heard anything. Its request would eventually answer `endAudio` with a "no speech"
+        // error, but making every paste wait out that round trip is pointless.
+        if let trailing, !segmentsWithAudio.contains(trailing) {
+            apply(session.handle(.abandoned(segment: trailing)))
+            discard(trailing)
+        }
+
+        // The outgoing task's final result arrives through its handler after `endAudio`.
+        // Give it a bounded moment; a recognizer that dies silently must not hang the key
+        // release, and whatever has already been committed is still worth pasting.
+        for _ in 0..<40 where !session.isFinished {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if !session.isFinished {
+            Log.speech.error("final result never arrived; pasting what was committed")
+            apply(session.forceComplete())
+        }
+
+        teardown()
+    }
+
+    // MARK: - Driving the session
+
+    private func apply(_ actions: [TranscriptSession.Action]) {
+        for action in actions {
+            switch action {
+            case .emit(let text):
+                chunkContinuation?.yield(TranscriptionChunk(text: text, isFinal: false))
+
+            case .openSegment(let index):
+                openSegment = index
+                startTask(for: index)
+                scheduleRotation()
+
+            case .closeSegment(let index):
+                requests[index]?.endAudio()
+
+            case .complete(let text):
+                chunkContinuation?.yield(TranscriptionChunk(text: text, isFinal: true))
+                chunkContinuation?.finish()
+                chunkContinuation = nil
+            }
+        }
+    }
+
+    /// Opens a recognition request and task for one segment.
+    ///
+    /// Each segment gets its own request because `SFSpeechAudioBufferRecognitionRequest`
+    /// is single-use: once it has finalized, appending more audio to it does nothing at
+    /// all, silently. That silence is the original bug.
+    private func startTask(for index: Int) {
+        guard let recognizer else { return }
+
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        // On-device when the OS supports it for this locale; otherwise Apple's server.
+        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        request.taskHint = .dictation
+        // Same dictionary nudge AppleSpeechEngine applies via AnalysisContext.
+        if !biasPhrases.isEmpty { request.contextualStrings = biasPhrases }
+        requests[index] = request
+
+        // Whatever was said between the last segment finalizing and this one existing.
+        for chunk in orphanedAudio { request.append(chunk.buffer) }
+        orphanedAudio.removeAll(keepingCapacity: true)
 
         // The result handler arrives on an arbitrary queue, and neither
         // `SFSpeechRecognitionResult` nor `Error` is Sendable. Flatten both into plain
         // value types here, on the callback's own thread, then hop onto the actor with
         // data that can legally cross the boundary.
-        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+        tasks[index] = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
             let outcome: Outcome
             if let result {
@@ -80,32 +199,44 @@ actor LegacySpeechEngine: TranscriptionEngine {
             } else {
                 return
             }
-            Task { await self.handle(outcome) }
+            Task { await self.handle(outcome, segment: index) }
         }
-
-        return chunks
     }
 
-    func feed(_ chunk: AudioChunk) async {
-        request?.append(chunk.buffer)
+    /// Restarts the countdown to the next rotation.
+    ///
+    /// Anchored to the opening of a segment rather than to the start of the hold, because
+    /// the ceiling applies per recognition task. A pause that ends a segment early resets
+    /// it for free.
+    private func scheduleRotation() {
+        rotationTask?.cancel()
+        let interval = rotationInterval
+        rotationTask = Task { [weak self] in
+            try? await Task.sleep(for: interval)
+            guard !Task.isCancelled else { return }
+            await self?.rotate()
+        }
     }
 
-    func finish() async {
-        request?.endAudio()
-        // The final result (isFinal == true) arrives through the result handler after
-        // endAudio; give it a moment, then close the stream if the handler hasn't.
-        // Without the timeout a recognizer that dies silently would hang endDictation.
-        for _ in 0..<40 where chunkContinuation != nil {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
+    private func rotate() {
+        Log.speech.info("rotating recognition task before the ~60s ceiling")
+        apply(session.handle(.rotationDue))
+    }
+
+    private func teardown() {
+        rotationTask?.cancel()
+        rotationTask = nil
+        for task in tasks.values { task.cancel() }
+        tasks.removeAll()
+        requests.removeAll()
+        openSegment = nil
+        segmentsWithAudio.removeAll()
+        orphanedAudio.removeAll(keepingCapacity: false)
+        recognizer = nil
         if let continuation = chunkContinuation {
             chunkContinuation = nil
             continuation.finish()
         }
-        task?.cancel()
-        task = nil
-        request = nil
-        recognizer = nil
     }
 
     // MARK: - Result handling
@@ -116,27 +247,38 @@ actor LegacySpeechEngine: TranscriptionEngine {
         case failure(domain: String, code: Int, message: String)
     }
 
-    private func handle(_ outcome: Outcome) {
+    private func handle(_ outcome: Outcome, segment: Int) {
         switch outcome {
         case .text(let text, let isFinal):
-            chunkContinuation?.yield(TranscriptionChunk(text: text, isFinal: isFinal))
-            if isFinal {
-                chunkContinuation?.finish()
-                chunkContinuation = nil
-            }
+            apply(session.handle(isFinal ? .finalized(segment: segment, text: text)
+                                         : .revised(segment: segment, text: text)))
+            if isFinal { discard(segment) }
 
         case .failure(let domain, let code, let message):
             // endAudio() surfaces a benign "no speech detected" cancellation on empty
-            // recordings; report real failures, close quietly otherwise.
+            // recordings, and a rotated-away task reports one routinely. Neither is worth
+            // failing the whole dictation over: drop the segment and keep the rest.
             let benign = domain == "kAFAssistantErrorDomain" && [203, 216, 1110].contains(code)
-            if benign {
-                chunkContinuation?.finish()
-            } else {
-                Log.speech.error("SFSpeechRecognizer failed: \(message, privacy: .public)")
-                chunkContinuation?.finish(throwing: TranscriptionError.recognitionFailed(message))
+            if !benign {
+                Log.speech.error("SFSpeechRecognizer failed on segment \(segment, privacy: .public): \(message, privacy: .public)")
             }
-            chunkContinuation = nil
+            apply(session.handle(.abandoned(segment: segment)))
+            discard(segment)
+
+            // A failure on the segment that was taking audio leaves the hold with nowhere
+            // to put it. Only a real failure warrants ending the dictation; a benign
+            // cancellation of an already-replaced segment does not.
+            if !benign, openSegment == segment, !session.isFinished {
+                apply(session.forceComplete())
+                teardown()
+            }
         }
+    }
+
+    private func discard(_ segment: Int) {
+        tasks[segment]?.cancel()
+        tasks[segment] = nil
+        requests[segment] = nil
     }
 
     // MARK: - Authorization

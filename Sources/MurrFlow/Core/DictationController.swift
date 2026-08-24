@@ -184,8 +184,15 @@ final class DictationController {
 
                 // Audio must reach the engine in capture order. A stream plus a single
                 // draining task guarantees that; spawning a Task per buffer would not.
+                //
+                // Unbounded is deliberate. `.bufferingNewest(64)` is about 2.7s at
+                // 48kHz/2048-frame buffers, and any engine that fell behind that had its
+                // audio silently discarded — no error, no log, just missing words in the
+                // paste. Back-pressure on memory is the better failure: a minute of 16kHz
+                // mono float32 is a few megabytes, and a hold that outruns that has bigger
+                // problems than the buffer.
                 let (audioStream, audioContinuation) = AsyncStream<AudioChunk>.makeStream(
-                    bufferingPolicy: .bufferingNewest(64)
+                    bufferingPolicy: .unbounded
                 )
                 self.audioContinuation = audioContinuation
 
@@ -316,7 +323,10 @@ final class DictationController {
         capture.stop()
         audioContinuation?.finish()
         audioContinuation = nil
-        await feedTask?.value
+        // Awaited for the drain, not for the recording. This is the path where the user
+        // let go before the engine finished starting, so there is no utterance to compare
+        // and the collected chunks are deliberately dropped.
+        _ = await feedTask?.value
         feedTask = nil
         await engine?.finish()
         engine = nil
