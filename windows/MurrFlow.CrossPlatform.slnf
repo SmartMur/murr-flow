@@ -1,0 +1,16 @@
+{
+  "solution": {
+    "path": "MurrFlow.sln",
+    "projects": [
+      "src\\MurrFlow.Abstractions\\MurrFlow.Abstractions.csproj",
+      "src\\MurrFlow.App\\MurrFlow.App.csproj",
+      "src\\MurrFlow.Core\\MurrFlow.Core.csproj",
+      "src\\MurrFlow.Dictionary\\MurrFlow.Dictionary.csproj",
+      "src\\MurrFlow.Speech\\MurrFlow.Speech.csproj",
+      "src\\MurrFlow.Testing\\MurrFlow.Testing.csproj",
+      "tests\\MurrFlow.App.Tests\\MurrFlow.App.Tests.csproj",
+      "tests\\MurrFlow.Core.Tests\\MurrFlow.Core.Tests.csproj",
+      "tests\\MurrFlow.Dictionary.Tests\\MurrFlow.Dictionary.Tests.csproj"
+    ]
+  }
+}
