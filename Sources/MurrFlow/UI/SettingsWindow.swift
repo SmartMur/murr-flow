@@ -1,3 +1,4 @@
+import MurrFlowHotkey
 import SwiftUI
 
 /// Settings — hotkey and model, per the brief. Opens on ⌘, via the standard `Settings` scene,

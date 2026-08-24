@@ -1,4 +1,5 @@
 import Foundation
+import MurrFlowHotkey
 import Observation
 
 /// Which speech engine transcribes an utterance.
@@ -67,11 +68,8 @@ final class Settings {
     }
 
     private init() {
-        // fn is the documented default (README, release notes, the HUD hint). Keep this in
-        // sync with HotkeyMonitor.key — a mismatch means a fresh install listens for a key
-        // the docs never mention, and holding fn silently does nothing.
-        let raw = defaults.string(forKey: Keys.pushToTalkKey) ?? PushToTalkKey.fn.rawValue
-        pushToTalkKey = PushToTalkKey(rawValue: raw) ?? .fn
+        let raw = defaults.string(forKey: Keys.pushToTalkKey) ?? PushToTalkKey.defaultKey.rawValue
+        pushToTalkKey = PushToTalkKey(rawValue: raw) ?? .defaultKey
         // Apple by default: no download, no dependency, live text while speaking.
         let storedEngine = SpeechEngineChoice(rawValue: defaults.string(forKey: Keys.engine) ?? "") ?? .apple
         engine = storedEngine == .parakeet && !ParakeetSupport.isAvailable ? .apple : storedEngine

@@ -8,7 +8,7 @@ Murr-flow is a menu-bar macOS app with no Dock icon while idle. A push-to-talk s
 
 ```
 ┌─────────────────────────────────────────────┐
-│  HotkeyListener (CGEvent tap, fn key)        │
+│  HotkeyListener (CGEvent tap, configurable)  │
 │  → fires session start / session end events  │
 └──────────────┬──────────────────────────────┘
                │
@@ -43,10 +43,10 @@ Side surfaces:
 
 ## Data flow
 
-1. User holds fn key → `HotkeyListener` fires `.sessionStart`
+1. User holds the configured key → `HotkeyListener` fires `.sessionStart`
 2. `AudioCapture` starts streaming
 3. `RecordingPanel` appears with live VU meter
-4. User releases fn key → `HotkeyListener` fires `.sessionEnd`
+4. User releases the configured key → `HotkeyListener` fires `.sessionEnd`
 5. `AudioCapture` stops; buffer handed to `SpeechEngine`
 6. `SpeechEngine` returns raw transcript
 7. `Dictionary` runs context biasing (already happened at step 2) and post-processing corrections

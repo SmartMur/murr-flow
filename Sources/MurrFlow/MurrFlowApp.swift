@@ -1,4 +1,5 @@
 import AppKit
+import MurrFlowHotkey
 import SwiftUI
 
 @main
